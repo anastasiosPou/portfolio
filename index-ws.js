@@ -13,6 +13,16 @@ server.listen(PORT, () => {
   console.log(`Listening on ${PORT}`);
 });
 
+process.on('SIGINT', () => {
+  console.log('sigint');
+  wss.clients.forEach(client => {
+    client.close();
+  });
+  server.close(() => {
+    shutdownDB();
+  });
+});
+
 /* WebSocket */
 
 const WebSocketServer = require('ws').Server;
@@ -37,6 +47,11 @@ wss.on('connection', function connection(ws) {
     ws.send('Welcome!');
   }
 
+  db.run(
+  `INSERT INTO visitors (count, time)
+      VALUES(${numOfClients}, datetime('now'))
+  `);
+
   ws.on('close', function close() {
     wss.broadcast(`Current visitors: ${wss.clients.size}`);
     console.log('A client has disconnected');
@@ -46,3 +61,29 @@ wss.on('connection', function connection(ws) {
     //
   });
 });
+
+/* Begin database*/
+
+const sqlite = require('sqlite3');
+const db = new sqlite.Database(':memory:');
+
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE visitors (
+      count INTEGER,
+      time TEXT
+    )
+  `);
+});
+
+function getCounts() {
+  db.each("SELECT * FROM visitors", (err, row) => {
+    console.log(row);
+  });
+}
+
+function shutdownDB() {
+  getCounts();
+  console.log('Shutting down db');
+  db.close();
+}
